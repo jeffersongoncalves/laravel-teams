@@ -2,20 +2,14 @@
 
 namespace JeffersonGoncalves\Teams\Tests;
 
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use JeffersonGoncalves\Teams\TeamsServiceProvider;
 use JeffersonGoncalves\Teams\Tests\Fixtures\User;
 use Orchestra\Testbench\TestCase as Orchestra;
 
 abstract class TestCase extends Orchestra
 {
-    protected function setUp(): void
-    {
-        parent::setUp();
-
-        $this->setUpDatabase();
-    }
+    use RefreshDatabase;
 
     protected function getPackageProviders($app): array
     {
@@ -64,40 +58,40 @@ abstract class TestCase extends Orchestra
         ];
     }
 
-    protected function setUpDatabase(): void
+    /**
+     * Same order as TeamsServiceProvider::hasMigrations(), preceded by a
+     * users fixture table (the package expects the host app to already
+     * have one). Hand-rolled Schema::create() calls without RefreshDatabase
+     * worked on SQLite's fresh in-memory database per test, but failed with
+     * "table already exists" from the second test onward against a
+     * persistent MySQL/Postgres database.
+     */
+    private const MIGRATION_ORDER = [
+        'create_teams_table',
+        'create_team_memberships_table',
+        'create_team_invitations_table',
+        'add_current_team_id_to_users_table',
+    ];
+
+    protected function defineDatabaseMigrations(): void
     {
-        Schema::create('users', function (Blueprint $table) {
-            $table->id();
-            $table->string('name');
-            $table->string('email')->unique();
-            $table->string('password')->default('');
-            $table->foreignId('current_team_id')->nullable();
-            $table->rememberToken();
-            $table->timestamps();
-        });
+        $stubsPath = __DIR__.'/../database/migrations';
+        $tempPath = sys_get_temp_dir().'/laravel-teams-migrations';
 
-        Schema::create('teams', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('user_id')->index();
-            $table->string('name');
-            $table->boolean('personal_team')->default(false);
-            $table->timestamps();
-        });
+        if (! is_dir($tempPath)) {
+            mkdir($tempPath, 0755, true);
+        }
 
-        Schema::create('membership', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('team_id')->index();
-            $table->foreignId('user_id')->index();
-            $table->timestamps();
-            $table->unique(['team_id', 'user_id']);
-        });
+        $usersFixture = __DIR__.'/Fixtures/create_users_table.php.stub';
+        $usersTarget = $tempPath.'/000_create_users_table.php';
+        if (file_exists($usersFixture) && ! file_exists($usersTarget)) {
+            copy($usersFixture, $usersTarget);
+        }
 
-        Schema::create('team_invitations', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('team_id')->index();
-            $table->string('email');
-            $table->timestamps();
-            $table->unique(['team_id', 'email']);
-        });
+        foreach (self::MIGRATION_ORDER as $index => $name) {
+            copy($stubsPath.'/'.$name.'.php', $tempPath.'/'.sprintf('%03d_%s.php', $index + 1, $name));
+        }
+
+        $this->loadMigrationsFrom($tempPath);
     }
 }
