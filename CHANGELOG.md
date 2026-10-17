@@ -2,6 +2,10 @@
 
 All notable changes to `laravel-teams` will be documented in this file.
 
+## 2.0.1 - 2026-10-17
+
+The migrations now ship as `.php.stub`, like the other packages. Publishing is unchanged: `php artisan vendor:publish --tag="teams-migrations"`.
+
 ## 2.0.0 - 2026-08-01
 
 ### Security
