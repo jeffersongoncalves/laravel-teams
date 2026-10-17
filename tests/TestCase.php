@@ -3,12 +3,14 @@
 namespace JeffersonGoncalves\Teams\Tests;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use JeffersonGoncalves\PestPluginDatabaseMigrations\LoadsPackageMigrations;
 use JeffersonGoncalves\Teams\TeamsServiceProvider;
 use JeffersonGoncalves\Teams\Tests\Fixtures\User;
 use Orchestra\Testbench\TestCase as Orchestra;
 
 abstract class TestCase extends Orchestra
 {
+    use LoadsPackageMigrations;
     use RefreshDatabase;
 
     protected function getPackageProviders($app): array
@@ -59,39 +61,13 @@ abstract class TestCase extends Orchestra
     }
 
     /**
-     * Same order as TeamsServiceProvider::hasMigrations(), preceded by a
-     * users fixture table (the package expects the host app to already
-     * have one). Hand-rolled Schema::create() calls without RefreshDatabase
-     * worked on SQLite's fresh in-memory database per test, but failed with
-     * "table already exists" from the second test onward against a
-     * persistent MySQL/Postgres database.
+     * The package expects the host app to already have a users table: the fixture's
+     * 0000_00_00_000000_ name sorts it before the package migrations (staged as 0000_…,
+     * 0001_… in TeamsServiceProvider::hasMigrations() order).
      */
-    private const MIGRATION_ORDER = [
-        'create_teams_table',
-        'create_team_memberships_table',
-        'create_team_invitations_table',
-        'add_current_team_id_to_users_table',
-    ];
-
     protected function defineDatabaseMigrations(): void
     {
-        $stubsPath = __DIR__.'/../database/migrations';
-        $tempPath = sys_get_temp_dir().'/laravel-teams-migrations';
-
-        if (! is_dir($tempPath)) {
-            mkdir($tempPath, 0755, true);
-        }
-
-        $usersFixture = __DIR__.'/Fixtures/create_users_table.php.stub';
-        $usersTarget = $tempPath.'/000_create_users_table.php';
-        if (file_exists($usersFixture) && ! file_exists($usersTarget)) {
-            copy($usersFixture, $usersTarget);
-        }
-
-        foreach (self::MIGRATION_ORDER as $index => $name) {
-            copy($stubsPath.'/'.$name.'.php', $tempPath.'/'.sprintf('%03d_%s.php', $index + 1, $name));
-        }
-
-        $this->loadMigrationsFrom($tempPath);
+        $this->loadMigrationsFrom(__DIR__.'/Fixtures/migrations');
+        $this->loadPackageMigrations(TeamsServiceProvider::class);
     }
 }
